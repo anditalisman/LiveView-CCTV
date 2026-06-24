@@ -30,5 +30,22 @@ app.use("/api/devices", deviceRoutes);
 app.use("/api/cameras", cameraRoutes);
 app.use("/api/streams", streamRoutes);
 
+// Fallback penyaji file HLS untuk dev/testing tanpa Nginx di depan.
+// Di production, Nginx men-serve folder ini langsung (lihat nginx/liveview.conf)
+// sehingga request tidak pernah sampai ke Node; route ini hanya jaring pengaman.
+app.use(
+  "/streams",
+  express.static(env.hlsOutputDir, {
+    setHeaders: (res, path) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      if (path.endsWith(".m3u8")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      } else {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  })
+);
+
 app.use(notFoundHandler);
 app.use(errorHandler);
