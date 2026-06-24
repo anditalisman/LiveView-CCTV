@@ -1,0 +1,86 @@
+// Prisma schema for LiveView CCTV Dashboard
+// Database: PostgreSQL (MySQL juga didukung, ganti provider = "mysql")
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+enum DeviceType {
+  IP_CAMERA // kamera IP berdiri sendiri
+  NVR // NVR/DVR Hikvision dengan banyak channel analog/IP
+}
+
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(OPERATOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+// Device = satu unit fisik: IP Camera tunggal, atau NVR/DVR yang punya banyak channel.
+// Kredensial RTSP (username/password) disimpan di level device karena
+// pada Hikvision NVR semua channel memakai satu kredensial login yang sama.
+model Device {
+  id                String     @id @default(uuid())
+  name              String
+  type              DeviceType
+  brand             String     @default("Hikvision")
+  ipAddress         String
+  port              Int        @default(554)
+  rtspUsername      String
+  rtspPasswordEnc   String // password terenkripsi (AES-256-GCM), tidak pernah dikirim ke frontend
+  transport         String     @default("tcp") // tcp | udp, sesuai opsi -rtsp_transport FFmpeg
+  notes             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  cameras Camera[]
+
+  @@map("devices")
+}
+
+// Camera = satu channel/lensa yang ditampilkan di dashboard.
+// Untuk IP_CAMERA device, biasanya hanya ada 1 Camera dengan channelNo = 1.
+// Untuk NVR device, setiap channel analog/IP menjadi 1 row Camera.
+model Camera {
+  id                String       @id @default(uuid())
+  deviceId          String
+  device            Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  name              String
+  location          String
+  channelNo         Int          @default(1) // 1, 2, 3, ... sesuai channel Hikvision
+  mainStreamSuffix  Int // contoh 101, 201, 301 -> Streaming/Channels/{suffix}
+  subStreamSuffix   Int // contoh 102, 202, 302 -> dipakai untuk grid (hemat bandwidth)
+  isActive          Boolean      @default(true)
+  status            CameraStatus @default(UNKNOWN)
+  lastCheckedAt      DateTime?
+  lastOnlineAt       DateTime?
+  sortOrder         Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([deviceId, channelNo])
+  @@map("cameras")
+}
