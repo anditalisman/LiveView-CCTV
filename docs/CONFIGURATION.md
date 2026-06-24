@@ -16,6 +16,19 @@ karena pada Hikvision NVR semua channel memakai login yang sama. Password
 dienkripsi (AES-256-GCM) di kolom `rtspPasswordEnc` dan tidak pernah
 dikembalikan oleh API maupun ditampilkan di frontend.
 
+> **Jebakan umum #1 — Port Device bukan port RTSP.** Field `port` pada Device
+> harus diisi port **RTSP** (default `554`), **bukan** port web/ISAPI Hikvision
+> (umumnya `8000` atau `80`). Mengisi `8000` akan membuat semua percobaan
+> streaming/test-connection gagal connect meski device terlihat "ada" di
+> database.
+>
+> **Jebakan umum #2 — Menambah Device saja tidak otomatis memunculkan kamera.**
+> Aplikasi ini **tidak melakukan auto-discovery** channel dari NVR/DVR (tidak
+> ada integrasi ISAPI/SDK Hikvision untuk scan channel). Setelah Device
+> dibuat, Anda **wajib** menambahkan setiap channel secara manual lewat menu
+> **Kamera → Tambah Kamera** (lihat bagian 4). Device dengan 0 Camera akan
+> membuat dashboard tetap kosong walau Device-nya valid.
+
 ## 2. Format RTSP Hikvision
 
 ```
@@ -103,11 +116,17 @@ Penjelasan flag penting:
 
 ### Jika kamera menggunakan codec H.265/HEVC
 
-Sebagian kamera Hikvision default ke H.265 pada main stream. Browser pada
-umumnya **tidak** bisa decode H.265 di tag `<video>` melalui HLS.js. Jika
-tile kamera tampil hitam meski status Online, ubah codec video kamera ke
-H.264 di menu kamera Hikvision (`Configuration > Video/Audio > Video`), atau
-ubah `-c:v copy` menjadi transcode di `streamManager.ts`:
+Sebagian kamera/NVR Hikvision default ke H.265 pada main maupun sub stream.
+Browser pada umumnya **tidak** bisa decode H.265 di tag `<video>` melalui
+HLS.js — RTSP-nya tetap bisa konek normal (test connection sukses), tapi
+videonya tidak akan tampil.
+
+Tombol **Test** di menu Kamera menampilkan `codec:` hasil probe (lewat
+`ffprobe`); jika tertulis `hevc` atau mengandung `265`, tile kamera tersebut
+akan tampil hitam meski status terbaca Online. Cara mengatasi, ubah codec
+video kamera ke H.264 di web config Hikvision (`Configuration > Video/Audio
+> Video`, ubah tab Sub Stream **dan** Main Stream per channel), atau ubah
+`-c:v copy` menjadi transcode di `streamManager.ts`:
 
 ```bash
 -c:v libx264 -preset veryfast -tune zerolatency -profile:v baseline
