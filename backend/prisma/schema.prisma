@@ -49,6 +49,7 @@ model Device {
   brand             String     @default("Hikvision")
   ipAddress         String
   port              Int        @default(554)
+  httpPort          Int        @default(80) // port ISAPI/web Hikvision, dipakai untuk auto-deteksi channel
   rtspUsername      String
   rtspPasswordEnc   String // password terenkripsi (AES-256-GCM), tidak pernah dikirim ke frontend
   transport         String     @default("tcp") // tcp | udp, sesuai opsi -rtsp_transport FFmpeg

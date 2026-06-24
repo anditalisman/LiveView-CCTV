@@ -23,10 +23,10 @@ dikembalikan oleh API maupun ditampilkan di frontend.
 > database.
 >
 > **Jebakan umum #2 — Menambah Device saja tidak otomatis memunculkan kamera.**
-> Aplikasi ini **tidak melakukan auto-discovery** channel dari NVR/DVR (tidak
-> ada integrasi ISAPI/SDK Hikvision untuk scan channel). Setelah Device
-> dibuat, Anda **wajib** menambahkan setiap channel secara manual lewat menu
-> **Kamera → Tambah Kamera** (lihat bagian 4). Device dengan 0 Camera akan
+> Setelah Device dibuat, kamera belum otomatis muncul — gunakan tombol
+> **Deteksi Channel** (lihat bagian 3) untuk mengambil daftar channel dari
+> NVR via ISAPI, atau tambahkan manual lewat **Kamera → Tambah Kamera**
+> (bagian 4) jika NVR tidak mendukung ISAPI. Device dengan 0 Camera akan
 > membuat dashboard tetap kosong walau Device-nya valid.
 
 ## 2. Format RTSP Hikvision
@@ -50,7 +50,36 @@ Form **Tambah Kamera** di menu admin otomatis mengisi `mainStreamSuffix`
 dan `subStreamSuffix` berdasarkan `channelNo` yang diinput (bisa diubah manual
 jika konfigurasi kamera Anda berbeda).
 
-## 3. Menambahkan IP Camera (berdiri sendiri)
+## 3. Deteksi Channel Otomatis (Auto-Discovery)
+
+Daripada menambahkan kamera satu per satu, gunakan tombol **Deteksi Channel**
+di menu **Device** untuk mengambil daftar channel langsung dari NVR/DVR lewat
+Hikvision ISAPI. Sistem mencoba dua endpoint secara berurutan:
+
+1. `/ISAPI/ContentMgmt/InputProxy/channels` — untuk NVR yang channel-nya
+   berupa kamera **IP** yang didaftarkan ke NVR (paling umum di lapangan).
+   Endpoint ini juga mengembalikan **nama channel** yang sudah diisi admin
+   di web config NVR, sehingga kamera baru otomatis punya nama yang masuk akal
+   (misalnya "LOBBY CS", "KASIR 1") — bukan sekadar "Channel 2".
+2. `/ISAPI/System/Video/inputs/channels` — fallback untuk input video analog
+   asli (port BNC) jika endpoint pertama tidak didukung firmware.
+
+Channel yang `channelNo`-nya **belum ada** di database akan otomatis dibuat
+sebagai Camera baru (`mainStreamSuffix`/`subStreamSuffix` terisi otomatis,
+`isActive: true`), channel yang sudah ada akan dilewati (tidak dobel).
+**Field `location` sengaja dikosongkan** karena NVR tidak tahu lokasi fisik
+kamera — admin tetap perlu mengisi ini manual lewat Edit Kamera satu per satu.
+
+Syarat: field **Port HTTP/ISAPI** di Device harus benar (defaultnya `80`,
+sebagian model Hikvision pakai `8000` — beda dengan Port RTSP `554`).
+Kredensial yang dipakai sama dengan kredensial RTSP device tersebut.
+
+Kalau NVR tidak mendukung ISAPI sama sekali, atau kredensialnya beda untuk
+ISAPI vs RTSP, sistem akan menampilkan pesan error spesifik (401 = kredensial
+salah, 502/notSupport = firmware tidak punya endpoint tersebut) — tambahkan
+manual lewat **Tambah Kamera** sebagai fallback.
+
+## 4. Menambahkan IP Camera (berdiri sendiri)
 
 1. Buka menu **Device** → **Tambah Device**.
 2. Isi:
@@ -65,25 +94,30 @@ jika konfigurasi kamera Anda berbeda).
 4. Klik **Test** pada baris kamera untuk memverifikasi koneksi sebelum
    ditampilkan di dashboard.
 
-## 4. Menambahkan Kamera Analog via DVR/NVR Hikvision
+## 5. Menambahkan Kamera Analog via DVR/NVR Hikvision
 
-Satu NVR/DVR didaftarkan sebagai **satu Device**, lalu setiap kamera analog
-yang terhubung ke channel NVR didaftarkan sebagai **Camera** terpisah.
+Satu NVR/DVR didaftarkan sebagai **satu Device**, lalu setiap kamera (analog
+maupun IP yang diproxy lewat NVR) didaftarkan sebagai **Camera** terpisah —
+atau pakai tombol **Deteksi Channel** (bagian 3) supaya tidak perlu input
+manual satu per satu.
 
 1. Menu **Device** → **Tambah Device**:
    - Tipe: `NVR / DVR`
    - IP Address: IP NVR (bukan IP kamera analognya — kamera analog tidak
      punya alamat sendiri, semua lewat IP NVR)
    - Username/Password: kredensial login NVR
-2. Menu **Kamera** → **Tambah Kamera**, ulangi untuk setiap channel:
+2. Coba **Deteksi Channel** dulu (lihat bagian 3) — jika berhasil, lanjut ke
+   langkah 4. Jika NVR tidak mendukung ISAPI, lanjut manual di langkah 3.
+3. (Manual) Menu **Kamera** → **Tambah Kamera**, ulangi untuk setiap channel:
    - Channel 1 (kamera analog di port BNC 1) → suffix `101`/`102`
    - Channel 2 (kamera analog di port BNC 2) → suffix `201`/`202`
    - Channel 3 → `301`/`302`, dst.
-3. Beri `name` dan `location` yang jelas per channel, contoh:
+4. Lengkapi `location` yang jelas per channel (field ini tidak pernah diisi
+   otomatis baik manual maupun via Deteksi Channel), contoh:
    - "Kamera Gudang A" — Channel 1
    - "Kamera Parkiran Belakang" — Channel 2
 
-## 5. Contoh Perintah FFmpeg (RTSP → HLS)
+## 6. Contoh Perintah FFmpeg (RTSP → HLS)
 
 Ini adalah perintah yang dijalankan otomatis oleh backend
 (`backend/src/services/streamManager.ts`) saat sebuah tile kamera dibuka:
@@ -136,7 +170,7 @@ Transcode menggunakan CPU jauh lebih besar — pertimbangkan menyalakan
 hanya untuk kamera yang memang H.265, atau gunakan GPU encoding
 (`-c:v h264_nvenc` jika server punya GPU NVIDIA).
 
-## 6. Pengujian Manual RTSP dari Server
+## 7. Pengujian Manual RTSP dari Server
 
 Sebelum menambahkan kamera lewat UI, disarankan tes manual dari server:
 
@@ -148,7 +182,7 @@ Jika berhasil, akan tampil info stream (codec, resolusi, fps). Jika gagal,
 periksa: IP/port kamera, kredensial, dan apakah server satu jaringan
 (intranet) dengan kamera/NVR.
 
-## 7. Hemat Bandwidth & CPU
+## 8. Hemat Bandwidth & CPU
 
 - Dashboard grid selalu memakai **sub stream** (resolusi rendah).
 - Fullscreen otomatis berpindah ke **main stream** (resolusi penuh) dan

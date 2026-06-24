@@ -18,12 +18,20 @@ export interface Device {
   brand: string;
   ipAddress: string;
   port: number;
+  httpPort: number;
   rtspUsername: string;
   transport: "tcp" | "udp";
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: { cameras: number };
+}
+
+export interface DiscoverChannelsResult {
+  discovered: number;
+  created: number;
+  skipped: number;
+  cameras: Camera[];
 }
 
 export interface Camera {

@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Camera, Device, TestConnectionResult, User } from "./types";
+import type { Camera, Device, DiscoverChannelsResult, TestConnectionResult, User } from "./types";
 
 export const TOKEN_KEY = "liveview_token";
 
@@ -50,6 +50,7 @@ export interface DevicePayload {
   brand?: string;
   ipAddress: string;
   port?: number;
+  httpPort?: number;
   rtspUsername: string;
   rtspPassword?: string;
   transport?: "tcp" | "udp";
@@ -62,6 +63,8 @@ export const deviceApi = {
   create: (data: DevicePayload) => api.post<Device>("/devices", data),
   update: (id: string, data: Partial<DevicePayload>) => api.patch<Device>(`/devices/${id}`, data),
   remove: (id: string) => api.delete(`/devices/${id}`),
+  discoverChannels: (id: string) =>
+    api.post<DiscoverChannelsResult>(`/devices/${id}/discover-channels`),
 };
 
 // ---- Cameras ----

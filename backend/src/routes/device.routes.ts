@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createDevice,
   deleteDevice,
+  discoverChannels,
   getDevice,
   listDevices,
   updateDevice,
@@ -18,5 +19,6 @@ router.get("/:id", asyncHandler(getDevice));
 router.post("/", requireRole("ADMIN"), asyncHandler(createDevice));
 router.patch("/:id", requireRole("ADMIN"), asyncHandler(updateDevice));
 router.delete("/:id", requireRole("ADMIN"), asyncHandler(deleteDevice));
+router.post("/:id/discover-channels", requireRole("ADMIN"), asyncHandler(discoverChannels));
 
 export default router;

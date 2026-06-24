@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { deviceApi, DevicePayload } from "../api/client";
-import type { Device } from "../api/types";
+import type { Device, DiscoverChannelsResult } from "../api/types";
 
 const emptyForm: DevicePayload = {
   name: "",
@@ -8,6 +8,7 @@ const emptyForm: DevicePayload = {
   brand: "Hikvision",
   ipAddress: "",
   port: 554,
+  httpPort: 80,
   rtspUsername: "admin",
   rtspPassword: "",
   transport: "tcp",
@@ -22,6 +23,10 @@ export default function DeviceManagementPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [discoveringId, setDiscoveringId] = useState<string | null>(null);
+  const [discoverResults, setDiscoverResults] = useState<
+    Record<string, { ok: boolean; message: string }>
+  >({});
 
   async function load() {
     setLoading(true);
@@ -49,6 +54,7 @@ export default function DeviceManagementPage() {
       brand: device.brand,
       ipAddress: device.ipAddress,
       port: device.port,
+      httpPort: device.httpPort,
       rtspUsername: device.rtspUsername,
       rtspPassword: "", // password tidak pernah ditampilkan; isi hanya jika ingin mengganti
       transport: device.transport,
@@ -83,6 +89,33 @@ export default function DeviceManagementPage() {
     if (!confirm(`Hapus device "${device.name}"? Semua kamera di device ini juga akan terhapus.`)) return;
     await deviceApi.remove(device.id);
     await load();
+  }
+
+  async function handleDiscover(device: Device) {
+    setDiscoveringId(device.id);
+    setDiscoverResults((prev) => ({ ...prev, [device.id]: undefined as any }));
+    try {
+      const res = await deviceApi.discoverChannels(device.id);
+      const data: DiscoverChannelsResult = res.data;
+      setDiscoverResults((prev) => ({
+        ...prev,
+        [device.id]: {
+          ok: true,
+          message:
+            data.created > 0
+              ? `${data.created} kamera baru ditambahkan (${data.skipped} sudah ada sebelumnya). Lengkapi nama & lokasi di menu Kamera.`
+              : `Tidak ada channel baru (${data.discovered} terdeteksi, semua sudah ada).`,
+        },
+      }));
+      await load();
+    } catch (err: any) {
+      setDiscoverResults((prev) => ({
+        ...prev,
+        [device.id]: { ok: false, message: err.response?.data?.message || "Gagal mendeteksi channel" },
+      }));
+    } finally {
+      setDiscoveringId(null);
+    }
   }
 
   return (
@@ -128,6 +161,9 @@ export default function DeviceManagementPage() {
             <Field label="Port RTSP">
               <input required type="number" value={form.port} onChange={(e) => setForm({ ...form, port: Number(e.target.value) })} className={inputClass} />
             </Field>
+            <Field label="Port HTTP/ISAPI (untuk Deteksi Channel)">
+              <input required type="number" value={form.httpPort} onChange={(e) => setForm({ ...form, httpPort: Number(e.target.value) })} className={inputClass} />
+            </Field>
             <Field label="Username RTSP">
               <input required value={form.rtspUsername} onChange={(e) => setForm({ ...form, rtspUsername: e.target.value })} className={inputClass} />
             </Field>
@@ -150,6 +186,10 @@ export default function DeviceManagementPage() {
               <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputClass} />
             </Field>
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Port HTTP/ISAPI biasanya <code>80</code> (kadang <code>8000</code> di beberapa model) —
+            berbeda dari Port RTSP. Dipakai khusus untuk tombol "Deteksi Channel", bukan untuk streaming.
+          </p>
 
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
@@ -168,7 +208,7 @@ export default function DeviceManagementPage() {
             <tr>
               <th className="px-3 py-2">Nama</th>
               <th className="px-3 py-2">Tipe</th>
-              <th className="px-3 py-2">IP : Port</th>
+              <th className="px-3 py-2">IP : Port (RTSP/HTTP)</th>
               <th className="px-3 py-2">Username</th>
               <th className="px-3 py-2">Channel</th>
               <th className="px-3 py-2 text-right">Aksi</th>
@@ -186,15 +226,27 @@ export default function DeviceManagementPage() {
               </tr>
             )}
             {devices.map((d) => (
-              <tr key={d.id} className="bg-[#11161d]">
+              <tr key={d.id} className="bg-[#11161d] align-top">
                 <td className="px-3 py-2 font-medium">{d.name}</td>
                 <td className="px-3 py-2">{d.type === "IP_CAMERA" ? "IP Camera" : "NVR/DVR"}</td>
-                <td className="px-3 py-2">{d.ipAddress}:{d.port}</td>
+                <td className="px-3 py-2">{d.ipAddress}:{d.port} / :{d.httpPort}</td>
                 <td className="px-3 py-2">{d.rtspUsername}</td>
                 <td className="px-3 py-2">{d._count?.cameras ?? 0}</td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <button
+                    onClick={() => handleDiscover(d)}
+                    disabled={discoveringId === d.id}
+                    className="mr-2 text-emerald-400 hover:underline disabled:opacity-50"
+                  >
+                    {discoveringId === d.id ? "Mendeteksi..." : "Deteksi Channel"}
+                  </button>
                   <button onClick={() => openEdit(d)} className="mr-2 text-blue-400 hover:underline">Edit</button>
                   <button onClick={() => handleDelete(d)} className="text-red-400 hover:underline">Hapus</button>
+                  {discoverResults[d.id] && (
+                    <div className={`mt-1 text-xs ${discoverResults[d.id].ok ? "text-green-400" : "text-red-400"}`}>
+                      {discoverResults[d.id].message}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

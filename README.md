@@ -117,6 +117,7 @@ Detail lengkap: `backend/prisma/schema.prisma`.
 - Dark mode (default aktif, bisa di-toggle).
 - Role Admin (kelola device/kamera/user) vs Operator (live view saja) — ditegakkan di backend (middleware `requireRole`) dan frontend (`ProtectedRoute`).
 - Manajemen kamera: tambah, edit, hapus, test koneksi (ffprobe), aktifkan/nonaktifkan.
+- Deteksi channel otomatis dari NVR/DVR lewat Hikvision ISAPI (tombol "Deteksi Channel" di menu Device) — tidak perlu input channel satu per satu.
 - Password RTSP terenkripsi di database, tidak pernah dikirim ke frontend dalam bentuk apapun.
 - Auto-reconnect: FFmpeg di-restart otomatis dengan backoff jika RTSP putus; player frontend retry otomatis jika HLS gagal load.
 - Hemat resource: stream FFmpeg hanya berjalan saat ada viewer (idle timeout), grid memakai sub-stream beresolusi rendah.
