@@ -56,5 +56,9 @@ export interface TestConnectionResult {
   message: string;
   rtspUrl: string;
   latencyMs: number;
-  streamInfo?: unknown;
+  streamInfo?: {
+    codec_name?: string;
+    width?: number;
+    height?: number;
+  } | null;
 }

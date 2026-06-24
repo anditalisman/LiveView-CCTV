@@ -233,6 +233,19 @@ export default function CameraManagementPage() {
                   {testResults[cam.id] && (
                     <div className={`mt-1 text-xs ${testResults[cam.id].success ? "text-green-400" : "text-red-400"}`}>
                       {testResults[cam.id].message} ({testResults[cam.id].latencyMs}ms)
+                      {testResults[cam.id].streamInfo?.codec_name && (
+                        <span
+                          className={
+                            /265|hevc/i.test(testResults[cam.id].streamInfo!.codec_name!)
+                              ? "ml-1 text-yellow-400"
+                              : "ml-1 text-gray-400"
+                          }
+                        >
+                          · codec: {testResults[cam.id].streamInfo!.codec_name}
+                          {/265|hevc/i.test(testResults[cam.id].streamInfo!.codec_name!) &&
+                            " (browser tidak mendukung, ubah ke H.264 di NVR)"}
+                        </span>
+                      )}
                     </div>
                   )}
                 </td>
