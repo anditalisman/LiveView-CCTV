@@ -30,6 +30,7 @@ export interface Device {
 export interface DiscoverChannelsResult {
   discovered: number;
   created: number;
+  createdInactive: number;
   skipped: number;
   cameras: Camera[];
 }
@@ -62,6 +63,7 @@ export interface Camera {
 export interface TestConnectionResult {
   success: boolean;
   message: string;
+  reason?: string;
   rtspUrl: string;
   latencyMs: number;
   streamInfo?: {

@@ -33,7 +33,7 @@ export async function listCameras(req: Request, res: Response) {
         : {}),
     },
     include: cameraInclude,
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
   res.json(cameras);
@@ -139,15 +139,15 @@ export async function testCameraConnection(req: Request, res: Response) {
     "error",
     "-rtsp_transport",
     camera.device.transport,
-    "-timeout",
-    "5000000", // microseconds (TCP socket timeout)
+    "-stimeout",
+    "5000000", // microseconds (TCP socket timeout, client mode; "-timeout" implies RTSP listen mode on ffmpeg 4.x+)
     "-print_format",
     "json",
     "-show_streams",
     rtspUrl,
   ];
 
-  execFile(env.ffprobePath, args, { timeout: 8000 }, async (error, stdout) => {
+  execFile(env.ffprobePath, args, { timeout: 8000 }, async (error, stdout, stderr) => {
     const latencyMs = Date.now() - startedAt;
     const success = !error;
 
@@ -161,9 +161,16 @@ export async function testCameraConnection(req: Request, res: Response) {
     });
 
     if (!success) {
+      const reason = maskRtspUrl(stderr?.trim() || error.message);
+      console.error(
+        `[camera:test-connection] camera=${id} url=${maskRtspUrl(rtspUrl)} latencyMs=${latencyMs} code=${
+          (error as NodeJS.ErrnoException).code ?? "unknown"
+        } killed=${(error as { killed?: boolean }).killed ?? false} reason=${reason}`,
+      );
       return res.json({
         success: false,
         message: "Gagal terhubung ke kamera. Periksa IP, port, kredensial, dan jaringan.",
+        reason,
         rtspUrl: maskRtspUrl(rtspUrl),
         latencyMs,
       });

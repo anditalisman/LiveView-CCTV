@@ -103,7 +103,10 @@ export default function DeviceManagementPage() {
           ok: true,
           message:
             data.created > 0
-              ? `${data.created} kamera baru ditambahkan (${data.skipped} sudah ada sebelumnya). Lengkapi nama & lokasi di menu Kamera.`
+              ? `${data.created} kamera baru ditambahkan (${data.skipped} sudah ada sebelumnya)` +
+                (data.createdInactive > 0
+                  ? `, ${data.createdInactive} di antaranya nonaktif karena channel unreachable -- cek kabel/jaringan kamera lalu aktifkan manual.`
+                  : `. Lengkapi nama & lokasi di menu Kamera.`)
               : `Tidak ada channel baru (${data.discovered} terdeteksi, semua sudah ada).`,
         },
       }));

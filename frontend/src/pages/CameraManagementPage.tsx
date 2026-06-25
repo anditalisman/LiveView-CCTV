@@ -233,6 +233,9 @@ export default function CameraManagementPage() {
                   {testResults[cam.id] && (
                     <div className={`mt-1 text-xs ${testResults[cam.id].success ? "text-green-400" : "text-red-400"}`}>
                       {testResults[cam.id].message} ({testResults[cam.id].latencyMs}ms)
+                      {!testResults[cam.id].success && testResults[cam.id].reason && (
+                        <div className="text-gray-400">{testResults[cam.id].reason}</div>
+                      )}
                       {testResults[cam.id].streamInfo?.codec_name && (
                         <span
                           className={

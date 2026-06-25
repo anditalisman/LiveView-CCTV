@@ -8,12 +8,21 @@ import { buildRtspUrl, maskRtspUrl, StreamQuality } from "../utils/rtsp";
 interface RunningStream {
   cameraId: string;
   quality: StreamQuality;
+  rtspQuality: StreamQuality;
+  triedMainFallback: boolean;
   process: ChildProcess;
   outputDir: string;
   lastHeartbeatAt: number;
   restartAttempts: number;
   stopping: boolean;
+  fallbackWatchdog?: NodeJS.Timeout;
 }
+
+// Beberapa channel analog di hybrid NVR menolak request sub-stream (RTSP 401/403)
+// tapi ffmpeg tidak langsung exit saat itu terjadi -- prosesnya menggantung tanpa
+// menghasilkan output. Watchdog ini memutuskan "sub-stream gagal" lebih cepat
+// daripada menunggu ffmpeg keluar sendiri.
+const SUB_STREAM_FALLBACK_TIMEOUT_MS = 6000;
 
 const streams = new Map<string, RunningStream>();
 
@@ -57,21 +66,47 @@ function spawnFfmpeg(rtspUrl: string, transport: string, outputDir: string) {
   return spawn(env.ffmpegPath, args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
+/** Hasil HLS belum pernah ada artinya ffmpeg gagal sebelum sempat encode segmen apapun. */
+function neverProducedOutput(outputDir: string): boolean {
+  return !fs.existsSync(path.join(outputDir, "index.m3u8"));
+}
+
+function fallbackToMainStream(
+  key: string,
+  cameraId: string,
+  quality: StreamQuality,
+  device: Device,
+  camera: Camera,
+  current: RunningStream
+) {
+  console.warn(
+    `[stream ${cameraId}:${quality}] sub-stream gagal, fallback ke main stream -> ${maskRtspUrl(
+      buildRtspUrl(device, camera, "main")
+    )}`
+  );
+  const restarted = startProcess(cameraId, quality, device, camera, "main");
+  restarted.lastHeartbeatAt = current.lastHeartbeatAt;
+  streams.set(key, restarted);
+}
+
 function startProcess(
   cameraId: string,
   quality: StreamQuality,
   device: Device,
-  camera: Camera
+  camera: Camera,
+  rtspQuality: StreamQuality = quality
 ): RunningStream {
   const outputDir = outputDirFor(cameraId, quality);
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const rtspUrl = buildRtspUrl(device, camera, quality);
+  const rtspUrl = buildRtspUrl(device, camera, rtspQuality);
   const proc = spawnFfmpeg(rtspUrl, device.transport, outputDir);
 
   const entry: RunningStream = {
     cameraId,
     quality,
+    rtspQuality,
+    triedMainFallback: rtspQuality === "main" && quality === "sub",
     process: proc,
     outputDir,
     lastHeartbeatAt: Date.now(),
@@ -86,9 +121,33 @@ function startProcess(
     }
   });
 
+  const key = streamKey(cameraId, quality);
+
+  if (!entry.triedMainFallback) {
+    entry.fallbackWatchdog = setTimeout(() => {
+      const current = streams.get(key);
+      if (!current || current.process !== proc || current.stopping) return;
+      if (!neverProducedOutput(outputDir)) return; // sub-stream berhasil, biarkan jalan terus
+
+      console.warn(
+        `[stream ${cameraId}:${quality}] sub-stream tidak menghasilkan output dalam ${SUB_STREAM_FALLBACK_TIMEOUT_MS}ms, fallback ke main stream -> ${maskRtspUrl(
+          buildRtspUrl(device, camera, "main")
+        )}`
+      );
+      current.stopping = true; // cegah handler exit proc lama ikut memproses ulang
+      proc.kill("SIGTERM");
+      fallbackToMainStream(key, cameraId, quality, device, camera, current);
+    }, SUB_STREAM_FALLBACK_TIMEOUT_MS);
+  }
+
   proc.on("exit", (code) => {
-    const key = streamKey(cameraId, quality);
+    if (entry.fallbackWatchdog) clearTimeout(entry.fallbackWatchdog);
+
     const current = streams.get(key);
+    if (current && current.process !== proc) {
+      // Map sudah diganti entry lain (misal oleh watchdog fallback) -- tidak ada yang perlu dibersihkan di sini.
+      return;
+    }
     if (!current || current.stopping) {
       streams.delete(key);
       return;
@@ -103,19 +162,27 @@ function startProcess(
       return;
     }
 
+    // Sub-stream gagal sebelum sempat menghasilkan output sama sekali (mis. server
+    // RTSP balas 404/401 untuk path sub-stream channel ini lalu ffmpeg langsung exit) --
+    // jangan retry quality yang sama selamanya, langsung fallback ke main stream.
+    if (quality === "sub" && !current.triedMainFallback && neverProducedOutput(current.outputDir)) {
+      fallbackToMainStream(key, cameraId, quality, device, camera, current);
+      return;
+    }
+
     // Auto-reconnect dengan exponential backoff jika RTSP terputus mendadak.
     current.restartAttempts += 1;
     const backoffMs = Math.min(30000, 1000 * 2 ** Math.min(current.restartAttempts, 5));
     console.warn(
       `[stream ${cameraId}:${quality}] ffmpeg exit code=${code}. Reconnect dalam ${backoffMs}ms (attempt #${current.restartAttempts}) -> ${maskRtspUrl(
-        buildRtspUrl(device, camera, quality)
+        buildRtspUrl(device, camera, current.rtspQuality)
       )}`
     );
 
     setTimeout(() => {
       const stillTracked = streams.get(key);
       if (!stillTracked || stillTracked.stopping) return;
-      const restarted = startProcess(cameraId, quality, device, camera);
+      const restarted = startProcess(cameraId, quality, device, camera, current.rtspQuality);
       restarted.restartAttempts = current.restartAttempts;
       restarted.lastHeartbeatAt = current.lastHeartbeatAt;
       streams.set(key, restarted);
@@ -150,6 +217,7 @@ export function heartbeat(cameraId: string, quality: StreamQuality) {
 
 function stopEntry(entry: RunningStream) {
   entry.stopping = true;
+  if (entry.fallbackWatchdog) clearTimeout(entry.fallbackWatchdog);
   entry.process.kill("SIGTERM");
   fs.rm(entry.outputDir, { recursive: true, force: true }, () => {});
 }

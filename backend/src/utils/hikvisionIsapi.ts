@@ -6,6 +6,8 @@ import { decryptSecret } from "./crypto";
 export interface DiscoveredChannel {
   channelNo: number;
   name: string;
+  /** true/false dari ISAPI status per-channel; undefined kalau firmware tidak mendukung endpoint status. */
+  online?: boolean;
 }
 
 const parser = new XMLParser({ ignoreAttributes: true });
@@ -30,7 +32,14 @@ export async function discoverVideoInputChannels(device: Device): Promise<Discov
     "InputProxyChannelList",
     "InputProxyChannel"
   );
-  if (proxyChannels) return proxyChannels;
+  if (proxyChannels) {
+    return Promise.all(
+      proxyChannels.map(async (ch) => ({
+        ...ch,
+        online: await fetchInputProxyChannelOnline(base, device.rtspUsername, password, ch.channelNo),
+      }))
+    );
+  }
 
   const analogChannels = await tryFetchChannels(
     `${base}/ISAPI/System/Video/inputs/channels`,
@@ -45,6 +54,36 @@ export async function discoverVideoInputChannels(device: Device): Promise<Discov
     "NVR tidak mendukung endpoint deteksi channel yang dikenal (InputProxy maupun VideoInput). " +
       "Tambahkan kamera secara manual lewat menu Kamera."
   );
+}
+
+/**
+ * Cek elemen <online> dari /ISAPI/ContentMgmt/InputProxy/channels/<id>/status.
+ * Channel proxy (kamera IP yang didaftarkan ke NVR) bisa "ada" di daftar channel
+ * tapi sebenarnya unreachable (kabel lepas, IP berubah, dst) -- field ini yang
+ * membedakan keduanya. Return undefined kalau endpoint gagal/tidak didukung,
+ * supaya channel tidak ditolak gara-gara kesalahan jaringan saat deteksi saja.
+ */
+async function fetchInputProxyChannelOnline(
+  base: string,
+  username: string,
+  password: string,
+  channelNo: number
+): Promise<boolean | undefined> {
+  try {
+    const { status, body } = await digestAuthGet(
+      `${base}/ISAPI/ContentMgmt/InputProxy/channels/${channelNo}/status`,
+      username,
+      password
+    );
+    if (status >= 400) return undefined;
+
+    const parsed = parser.parse(body);
+    const online = parsed?.InputProxyChannelStatus?.online;
+    if (online === undefined) return undefined;
+    return String(online).trim().toLowerCase() === "true";
+  } catch {
+    return undefined;
+  }
 }
 
 /** Return null (bukan throw) kalau endpoint ini tidak didukung firmware, supaya bisa coba endpoint lain. */

@@ -148,7 +148,10 @@ export async function discoverChannels(req: Request, res: Response) {
           channelNo: ch.channelNo,
           mainStreamSuffix: ch.channelNo * 100 + 1,
           subStreamSuffix: ch.channelNo * 100 + 2,
-          isActive: true,
+          // ch.online === false berarti ISAPI melaporkan channel ini unreachable
+          // (kamera proxy mati/putus jaringan) saat deteksi -- dibuat nonaktif
+          // supaya tidak ikut di-stream terus-menerus sampai admin verifikasi & aktifkan.
+          isActive: ch.online !== false,
         },
       })
     )
@@ -157,6 +160,7 @@ export async function discoverChannels(req: Request, res: Response) {
   res.json({
     discovered: discovered.length,
     created: created.length,
+    createdInactive: created.filter((c) => !c.isActive).length,
     skipped: discovered.length - created.length,
     cameras: created,
   });

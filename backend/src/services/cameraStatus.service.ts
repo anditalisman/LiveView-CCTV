@@ -15,7 +15,7 @@ function probeOnline(camera: Camera, device: Device): Promise<boolean> {
       "error",
       "-rtsp_transport",
       device.transport,
-      "-timeout",
+      "-stimeout", // "-timeout" implies RTSP listen mode on ffmpeg 4.x+, causing instant EADDRNOTAVAIL
       "4000000",
       "-show_entries",
       "stream=codec_type",
