@@ -100,7 +100,7 @@ export const cameraApi = {
 // ---- Streams ----
 export const streamApi = {
   start: (cameraId: string, quality: "main" | "sub") =>
-    api.post<{ url: string }>(`/streams/${cameraId}/${quality}/start`),
+    api.post<{ url: string; hlsUrl?: string }>(`/streams/${cameraId}/${quality}/start`),
   heartbeat: (cameraId: string, quality: "main" | "sub") =>
     api.post(`/streams/${cameraId}/${quality}/heartbeat`),
 };

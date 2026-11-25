@@ -23,6 +23,7 @@ export const env = {
   hlsOutputDir: process.env.HLS_OUTPUT_DIR || "/var/www/liveview/streams",
   ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
   ffprobePath: process.env.FFPROBE_PATH || "ffprobe",
+  mediamtxApiUrl: process.env.MEDIAMTX_API_URL || "http://127.0.0.1:9997",
 
   streamIdleTimeoutSec: parseInt(process.env.STREAM_IDLE_TIMEOUT_SEC || "60", 10),
   statusCheckIntervalSec: parseInt(process.env.STATUS_CHECK_INTERVAL_SEC || "30", 10),
