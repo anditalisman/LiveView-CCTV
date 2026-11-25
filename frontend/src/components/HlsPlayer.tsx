@@ -105,11 +105,11 @@ export const HlsPlayer = forwardRef<HTMLVideoElement, HlsPlayerProps>(function H
       if (Hls.isSupported()) {
         const hls = new Hls({
           lowLatencyMode: true,
-          maxBufferLength: 3,
-          maxMaxBufferLength: 6,
+          maxBufferLength: 2,
+          maxMaxBufferLength: 4,
           backBufferLength: 0,
-          liveSyncDurationCount: 1,
-          liveMaxLatencyDurationCount: 3,
+          liveSyncDuration: 0.5,
+          liveMaxLatencyDuration: 1.5,
           maxLiveSyncPlaybackRate: 1.5,
           manifestLoadingMaxRetry: 8,
           manifestLoadingRetryDelay: 500,
