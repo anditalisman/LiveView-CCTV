@@ -12,6 +12,15 @@ interface HlsPlayerProps {
 
 const HEARTBEAT_MS = 20_000;
 const MAX_RETRY_DELAY_MS = 15_000;
+const whepUnsupportedPaths = new Set<string>();
+
+function browserSupportsHevcWebRtc(): boolean {
+  if (typeof RTCRtpReceiver === "undefined" || typeof RTCRtpReceiver.getCapabilities !== "function") {
+    return false;
+  }
+  const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs ?? [];
+  return codecs.some((c) => /h265|hevc/i.test(c.mimeType));
+}
 
 /**
  * Player live stream: memakai WebRTC (WHEP) sebagai transport utama untuk latency
@@ -105,12 +114,12 @@ export const HlsPlayer = forwardRef<HTMLVideoElement, HlsPlayerProps>(function H
       if (Hls.isSupported()) {
         const hls = new Hls({
           lowLatencyMode: true,
-          maxBufferLength: 2,
-          maxMaxBufferLength: 4,
+          maxBufferLength: 3,
+          maxMaxBufferLength: 6,
           backBufferLength: 0,
-          liveSyncDuration: 0.5,
-          liveMaxLatencyDuration: 1.5,
-          maxLiveSyncPlaybackRate: 1.5,
+          liveSyncDuration: 1.0,
+          liveMaxLatencyDuration: 2.5,
+          maxLiveSyncPlaybackRate: 1.25,
           manifestLoadingMaxRetry: 8,
           manifestLoadingRetryDelay: 500,
           levelLoadingMaxRetry: 6,
@@ -203,18 +212,22 @@ export const HlsPlayer = forwardRef<HTMLVideoElement, HlsPlayerProps>(function H
       try {
         const res = await streamApi.start(cameraId, quality);
         if (cancelled) return;
-        const { url, hlsUrl } = res.data;
+        const { url, hlsUrl, preferHls } = res.data;
+        const pathKey = `${cameraId}:${quality}`;
+        const skipWebRtc =
+          whepUnsupportedPaths.has(pathKey) || (Boolean(preferHls) && !browserSupportsHevcWebRtc());
 
         heartbeatInterval = setInterval(() => {
           streamApi.heartbeat(cameraId, quality).catch(() => {});
         }, HEARTBEAT_MS);
 
-        if (typeof RTCPeerConnection !== "undefined" && url.endsWith("/whep")) {
+        if (!skipWebRtc && typeof RTCPeerConnection !== "undefined" && url.endsWith("/whep")) {
           try {
             await attachWebRtc(url, hlsUrl);
             return;
           } catch {
             if (cancelled) return;
+            whepUnsupportedPaths.add(pathKey);
             cleanupPlayer();
             if (hlsUrl) {
               attachHls(hlsUrl);

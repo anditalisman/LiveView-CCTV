@@ -22,8 +22,8 @@ export async function startStream(req: Request, res: Response) {
   if (!camera) throw new ApiError(404, "Kamera tidak ditemukan");
   if (!camera.isActive) throw new ApiError(400, "Kamera sedang nonaktif");
 
-  const { url, hlsUrl } = await ensureStream(camera.device, camera, q);
-  res.json({ url, hlsUrl });
+  const { url, hlsUrl, preferHls } = await ensureStream(camera.device, camera, q);
+  res.json({ url, hlsUrl, preferHls });
 }
 
 export async function streamHeartbeat(req: Request, res: Response) {

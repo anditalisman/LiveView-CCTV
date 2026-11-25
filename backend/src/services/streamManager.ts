@@ -5,6 +5,7 @@ import { buildRtspUrl, maskRtspUrl, StreamQuality } from "../utils/rtsp";
 interface StreamUrls {
   url: string;
   hlsUrl: string;
+  preferHls?: boolean;
 }
 
 const activePaths = new Map<string, number>();
@@ -18,7 +19,7 @@ export function publicWebRtcPath(cameraId: string, quality: StreamQuality): stri
 }
 
 export function publicHlsPath(cameraId: string, quality: StreamQuality): string {
-  return `/hls/${pathNameFor(cameraId, quality)}/index.m3u8`;
+  return `/hls/${pathNameFor(cameraId, quality)}/index.m3u8?cookieCheck=1`;
 }
 
 async function mediamtxRequest(method: string, apiPath: string, body?: unknown): Promise<Response> {
@@ -66,10 +67,25 @@ export async function ensureStream(
     }
   }
 
+  let preferHls = false;
+  try {
+    const infoRes = await mediamtxRequest("GET", `/v3/paths/get/${name}`);
+    if (infoRes.ok) {
+      const info = (await infoRes.json()) as { tracks?: string[] };
+      const tracks = info.tracks ?? [];
+      if (tracks.includes("H265") && !tracks.includes("H264")) {
+        preferHls = true;
+      }
+    }
+  } catch {
+    // Abaikan jika gagal cek tracks; fallback ke default WebRTC + HLS.
+  }
+
   activePaths.set(name, Date.now());
   return {
     url: publicWebRtcPath(camera.id, quality),
     hlsUrl: publicHlsPath(camera.id, quality),
+    preferHls,
   };
 }
 
