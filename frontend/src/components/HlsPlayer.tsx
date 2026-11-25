@@ -48,10 +48,15 @@ export function HlsPlayer({ cameraId, quality, className, muted = true }: HlsPla
 
       if (Hls.isSupported()) {
         const hls = new Hls({
-          maxBufferLength: 6,
-          liveSyncDurationCount: 3,
+          lowLatencyMode: true,
+          maxBufferLength: 3,
+          maxMaxBufferLength: 6,
+          backBufferLength: 0,
+          liveSyncDurationCount: 1,
+          liveMaxLatencyDurationCount: 3,
+          maxLiveSyncPlaybackRate: 1.5,
           manifestLoadingMaxRetry: 6,
-          manifestLoadingRetryDelay: 1000,
+          manifestLoadingRetryDelay: 500,
           levelLoadingMaxRetry: 6,
           fragLoadingMaxRetry: 6,
         });
@@ -100,10 +105,24 @@ export function HlsPlayer({ cameraId, quality, className, muted = true }: HlsPla
       retryTimerRef.current = setTimeout(start, delay);
     }
 
+    function handleVisibilityChange() {
+      if (document.hidden) return;
+      const video = videoRef.current;
+      const hls = hlsRef.current;
+      if (!video || !hls) return;
+      const livePos = hls.liveSyncPosition;
+      if (typeof livePos === "number" && Number.isFinite(livePos) && livePos - video.currentTime > 2) {
+        video.currentTime = livePos;
+      }
+      video.play().catch(() => {});
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     start();
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       cleanupPlayer();
     };
